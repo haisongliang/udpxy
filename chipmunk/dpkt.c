@@ -539,6 +539,7 @@ free_dstream_ctx( struct dstream_ctx* ds )
 static int
 register_packet( struct dstream_ctx* spc, char* buf, size_t len )
 {
+    //创建数据包链表节点
     struct iovec* new_pkt = NULL;
     static const int DO_VERIFY = 1;
 
@@ -569,6 +570,25 @@ register_packet( struct dstream_ctx* spc, char* buf, size_t len )
                 (u_long)spc->pkt_count, (void*)buf, (u_long)len ) );
     */
 
+    //数据包判重. 高低位不重要    
+    //2 3
+    spc->new_rtp_package_header.seq = *(unsigned short*)(new_buf + 2);
+    //4567
+    spc->new_rtp_package_header.timestamp = *(unsigned int*)(new_buf + 4);
+
+    if(spc->history[spc->new_rtp_package_header.seq].timestamp == spc->new_rtp_package_header.timestamp)
+    {
+        //序号相同，时间戳相同说明是同一个包
+        spc->flags |= F_DROP_PACKET;
+        return 0;
+    }
+    else
+    {
+        //序号相同，时间戳不同，说明经过一个循环，不是一个包，更新时间戳
+        spc->history[spc->new_rtp_package_header.seq].timestamp = spc->new_rtp_package_header.timestamp;
+    }
+
+    //提取rtp数据包的payload, new_buff为起点, new_len为长度
     if( 0 != RTP_process( &new_buf, &new_len, DO_VERIFY, g_flog ) ) {
         TRACE( (void)tmfputs("register packet: dropping\n", g_flog) );
         spc->flags |= F_DROP_PACKET;
@@ -666,6 +686,7 @@ read_data( struct dstream_ctx* spc, int fd, char* data,
     ssize_t n = 0, nrcv = -1;
     time_t start_tm = time(NULL), cur_tm = 0;
     time_t buftm_sec = 0;
+    int dropped_package = 0;
 
     assert( spc && (data_len > 0) && opt );
 
@@ -674,6 +695,7 @@ read_data( struct dstream_ctx* spc, int fd, char* data,
      */
 
     for( m = 0, n = 0; ((opt->max_frgs < 0) ? 1 : (m < opt->max_frgs)); ++m ) {
+        //单次只读一个数据包到spc
         nrcv = read_packet( spc, fd, data + n, data_len - n );
         if( nrcv <= 0 ) {
             if( EAGAIN == errno ) {
@@ -691,6 +713,7 @@ read_data( struct dstream_ctx* spc, int fd, char* data,
         }
 
         if( spc->flags & F_DROP_PACKET ) {
+            dropped_package++;
             spc->flags &= ~F_DROP_PACKET;
             continue;
         }
@@ -715,10 +738,19 @@ read_data( struct dstream_ctx* spc, int fd, char* data,
         }
     } /* for */
 
+    //重复包可能导致nrcv>0 n = 0
     if( (nrcv > 0) && !n ) {
-        TRACE( (void)tmfprintf( g_flog, "%s: no data to send "
-                    "out of [%d] packets\n", __func__, m ) );
-        return -1;
+
+        if(dropped_package > 0)
+        {
+            return 0;
+        }
+        else
+        {
+            TRACE( (void)tmfprintf( g_flog, "%s: no data to send "
+                        "out of [%d] packets\n", __func__, m ) );
+            return -1;
+        }
     }
 
     return (nrcv > 0) ? n : -1;

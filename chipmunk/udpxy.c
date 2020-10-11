@@ -520,7 +520,6 @@ sync_dsockbuf_len( int ssockfd, int dsockfd )
     return rc;
 }
 
-
 /* relay traffic from source to destination socket
  *
  */
@@ -551,6 +550,10 @@ relay_traffic( int ssockfd, int dsockfd, struct server_ctx* ctx,
 
     static const int SET_PID = 1;
     struct tps_data tps;
+
+    //384 KB
+    tmfprintf( g_flog, "*** init rtp history 384 KB buffer ***\n");
+    memset(ds.history, 0, sizeof(ds.history));
 
     assert( ctx && mifaddr && MAX_PAUSE_MSEC > 0 );
 
@@ -651,8 +654,9 @@ relay_traffic( int ssockfd, int dsockfd, struct server_ctx* ctx,
                     break;
             }
 
-            TRACE( check_fragments("sent", nrcv,
-                        lsent, nsent, t_delta, g_flog) );
+            //避免太多日志
+            //TRACE( check_fragments("sent", nrcv,
+            //            lsent, nsent, t_delta, g_flog) );
             lsent = nsent;
         }
 

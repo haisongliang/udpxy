@@ -222,7 +222,9 @@ setup_mcast_listener( struct sockaddr_in*   sa,
             break;
         }
 
-#ifdef SO_REUSEPORT
+//hiboy padavan error!
+//#ifdef SO_REUSEPORT
+#if 0
         /*  On some systems (such as FreeBSD) SO_REUSEADDR
             just isn't enough to subscribe to N same channels for different clients.
         */
